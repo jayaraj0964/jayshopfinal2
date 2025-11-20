@@ -1,6 +1,7 @@
 package com.shopping.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -12,5 +13,5 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     List<Orders> findByUserId(Long userId);
     List<Orders> findByUserIdOrderByOrderDateDesc(Long user_id);
     List<Orders> findAllByOrderByOrderDateDesc();
-    Orders findByCfLinkId(String cfLinkId);
+    Optional<Orders> findByCashfreeOrderId(String cashfreeOrderId);
 }

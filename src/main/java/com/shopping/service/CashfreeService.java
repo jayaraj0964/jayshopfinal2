@@ -66,7 +66,7 @@ public CreateOrderResult createOrder(Long dbOrderId, double amount, String email
 
     Map<String, Object> meta = new HashMap<>();
     meta.put("return_url", "https://jayshopy-ma48.vercel.app/order-success?order_id=" + orderId);
-    meta.put("notify_url", "https://jayshopfinal.onrender.com/jay/webhook/cashfree");
+    meta.put("notify_url", "https://jayshopfinal2.onrender.com/jay/webhook/cashfree");
     body.put("order_meta", meta);
 
     HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, getHeaders());
@@ -105,51 +105,53 @@ private String generateUpiQr(String orderId, double amount, String vpa) {
 
     // WEBHOOK VERIFICATION
    public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
-        try {
-            String data = timestamp + "." + payload;
+    try {
+        // Cashfree signs data as "<timestamp>.<payload>"
+        String data = timestamp + "." + payload;
 
-            Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec key = new SecretKeySpec(
-                    cashfreeConfig.getWebhookSecret().getBytes(StandardCharsets.UTF_8),
-                    "HmacSHA256"
-            );
-            mac.init(key);
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec key = new SecretKeySpec(
+                cashfreeConfig.getSecretKey().getBytes(StandardCharsets.UTF_8), // ✅ use API secret
+                "HmacSHA256"
+        );
+        mac.init(key);
 
-            byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            String computedSignature = Base64.getEncoder().encodeToString(hash);
+        byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+        String computedSignature = Base64.getEncoder().encodeToString(hash);
 
-            log.info("Webhook Signature Verification -> Timestamp: {}", timestamp);
-            log.info("Received Signature: {}", receivedSignature);
-            log.info("Computed Signature: {}", computedSignature);
+        log.info("Webhook Signature Verification -> Timestamp: {}", timestamp);
+        log.info("Received Signature: {}", receivedSignature);
+        log.info("Computed Signature: {}", computedSignature);
 
-            boolean match = computedSignature.equals(receivedSignature);
-            if (!match) {
-                log.warn("Signature mismatch! Webhook rejected.");
-            }
-            return match;
-
-        } catch (Exception e) {
-            log.error("Webhook signature verification failed", e);
-            return false;
+        boolean match = computedSignature.equals(receivedSignature);
+        if (!match) {
+            log.warn("Signature mismatch! Webhook rejected.");
         }
-    }
+        return match;
 
-    // Helper method if you want to log computed signature separately
-    public String computeSignature(String payload, String timestamp) {
-        try {
-            String data = timestamp + "." + payload;
-            Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec key = new SecretKeySpec(
-                    cashfreeConfig.getWebhookSecret().getBytes(StandardCharsets.UTF_8),
-                    "HmacSHA256"
-            );
-            mac.init(key);
-            byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(hash);
-        } catch (Exception e) {
-            log.error("Signature computation failed", e);
-            return "ERROR";
-        }
+    } catch (Exception e) {
+        log.error("Webhook signature verification failed", e);
+        return false;
     }
+}
+
+// Helper method if you want to log computed signature separately
+public String computeSignature(String payload, String timestamp) {
+    try {
+        String data = timestamp + "." + payload;
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec key = new SecretKeySpec(
+                cashfreeConfig.getSecretKey().getBytes(StandardCharsets.UTF_8), // ✅ use API secret
+                "HmacSHA256"
+        );
+        mac.init(key);
+        byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+        return Base64.getEncoder().encodeToString(hash);
+    } catch (Exception e) {
+        log.error("Signature computation failed", e);
+        return "ERROR";
+    }
+}
+
 
 }

@@ -34,13 +34,12 @@ public class Orders {  // ← Keep name as "Orders" to avoid conflict
 
     @Column(nullable = false, length = 500)
     private String shippingAddress;
+    private String cashfreeOrderId;
 
     @Column(name = "transaction_id")
     private String transactionId;
     // === RELATIONSHIPS ===
-    @Column(name = "cf_link_id", unique = true)
-    private String cfLinkId;
-
+   
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> items = new ArrayList<>();
 
