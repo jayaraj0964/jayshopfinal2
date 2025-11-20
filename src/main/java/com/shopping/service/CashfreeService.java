@@ -50,7 +50,9 @@ public CreateOrderResult createOrder(Long dbOrderId, double amount, String email
     log.info("DB ID: {} | Amount: ₹{} | User: {} ({}) | Phone: {}", dbOrderId, amount, name, email, phone);
 
     String url = "https://api.cashfree.com/pg/orders";
-    String orderId = "ORD_" + dbOrderId;
+
+    // ✅ Generate unique Cashfree order_id to avoid 409 Conflict
+    String orderId = "ORD_" + dbOrderId + "_" + System.currentTimeMillis();
 
     Map<String, Object> body = new HashMap<>();
     body.put("order_id", orderId);
@@ -66,7 +68,7 @@ public CreateOrderResult createOrder(Long dbOrderId, double amount, String email
 
     Map<String, Object> meta = new HashMap<>();
     meta.put("return_url", "https://jayshopy-ma48.vercel.app/order-success?order_id=" + orderId);
-    meta.put("notify_url", "https://jayshopfinal2.onrender.com/jay/webhook/cashfree");
+    meta.put("notify_url", "https://jayshopfinal2.onrender.com/api/user/webhook/cashfree"); // ✅ corrected path
     body.put("order_meta", meta);
 
     HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, getHeaders());
@@ -81,7 +83,7 @@ public CreateOrderResult createOrder(Long dbOrderId, double amount, String email
         result.orderId = root.path("order_id").asText();
         result.amount = amount;
         result.paymentSessionId = root.path("payment_session_id").asText();
-        result.qrCodeUrl = generateUpiQr(orderId, amount, cashfreeConfig.getMerchantUpiId()); // Your fallback QR
+        result.qrCodeUrl = generateUpiQr(orderId, amount, cashfreeConfig.getMerchantUpiId());
 
         if (result.paymentSessionId == null || result.paymentSessionId.isEmpty()) {
             throw new RuntimeException("No payment_session_id – check keys");
