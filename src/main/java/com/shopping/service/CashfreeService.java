@@ -112,10 +112,10 @@ private String generateUpiQr(String orderId, double amount, String vpa) {
         String data = timestamp + "." + payload;
 
         Mac mac = Mac.getInstance("HmacSHA256");
-        SecretKeySpec key = new SecretKeySpec(
-                cashfreeConfig.getSecretKey().getBytes(StandardCharsets.UTF_8), // ✅ use API secret
-                "HmacSHA256"
-        );
+       SecretKeySpec key = new SecretKeySpec(
+    cashfreeConfig.getSecretKey().getBytes(StandardCharsets.UTF_8), 
+    "HmacSHA256"
+);
         mac.init(key);
 
         byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
