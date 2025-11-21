@@ -59,7 +59,7 @@ public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         .authorizeHttpRequests(auth -> auth
 
             // FIRST LINE – WEBHOOK MUST BE TOP (Cashfree ki JWT undadu)
-            .requestMatchers("/jay/webhook/cashfree").permitAll()
+            .requestMatchers("/api/user/webhook/cashfree").permitAll()
 
             // Second – Public endpoints
             .requestMatchers(
