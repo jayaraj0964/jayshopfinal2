@@ -16,7 +16,8 @@ public class CashfreeConfig {
     private String mode = "PROD";
     private String returnUrl; 
     private String merchantUpiId;
-   
+    @Value("${CASHFREE_WEBHOOK_SECRET}")
+    private String webhookSecret;
     
     public String getAppId() {
         return appId != null ? appId.trim() : null;
@@ -32,5 +33,8 @@ public class CashfreeConfig {
 
     public String getMerchantUpiId() {
         return merchantUpiId != null ? merchantUpiId.trim() : null;
+    }
+    public String getWebhookSecret() {
+        return webhookSecret;
     }
 }

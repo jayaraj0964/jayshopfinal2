@@ -25,70 +25,39 @@ public class WebhookController {
     @Transactional
     @PostMapping("/webhook/cashfree")
     public ResponseEntity<String> handleCashfreeWebhook(
-            @RequestBody String body,
-            @RequestHeader(value = "x-webhook-timestamp", required = false) String timestamp,
-            @RequestHeader(value = "x-webhook-signature", required = false) String signature,
-            HttpServletRequest request) {
+        @RequestBody String body,
+        @RequestHeader("x-webhook-timestamp") String timestamp,
+        @RequestHeader("x-webhook-signature") String signature) {
 
-        log.info("=== CASHFREE WEBHOOK HIT ===");
-        log.info("IP: {} | Timestamp: {} | Signature: {}", request.getRemoteAddr(), timestamp, signature);
-        log.info("Payload: {}", body);
+    log.info("CASHFREE WEBHOOK HIT | Timestamp: {} | Signature: {}", timestamp, signature);
 
-        if (timestamp == null || signature == null) {
-            log.warn("Missing headers: timestamp or signature");
-            return ResponseEntity.badRequest().body("Missing headers");
-        }
-
-        if (!cashfreeService.verifyWebhookSignature(body, signature, timestamp)) {
-            log.warn("Invalid webhook signature for payload");
-            return ResponseEntity.badRequest().body("Invalid signature");
-        }
-
-        try {
-            JsonNode json = objectMapper.readTree(body);
-            String eventType = json.path("type").asText();
-            String orderId = json.path("data").path("order").path("order_id").asText("");
-            String paymentId = json.path("data").path("payment").path("cf_payment_id").asText("");
-            String paymentStatus = json.path("data").path("payment").path("payment_status").asText("");
-
-            log.info("Webhook Event: {}", eventType);
-            log.info("Cashfree OrderId: {}", orderId);
-            log.info("PaymentId: {} | Status: {}", paymentId, paymentStatus);
-
-            if (orderId.isEmpty()) {
-                log.error("No order_id in webhook payload");
-                return ResponseEntity.ok("Ignored");
-            }
-
-            Orders order = orderRepository.findByCashfreeOrderId(orderId).orElse(null);
-            if (order == null) {
-                log.error("Order not found in DB for order_id: {}", orderId);
-                return ResponseEntity.ok("Ignored");
-            }
-
-            log.info("DB Order {} current status: {}", order.getId(), order.getStatus());
-
-            if ("PAYMENT_SUCCESS".equalsIgnoreCase(eventType)
-                    || "order.paid".equalsIgnoreCase(eventType)
-                    || "PAYMENT_SUCCESS_WEBHOOK".equalsIgnoreCase(eventType)) {
-                order.setStatus("PAID");
-                order.setTransactionId(paymentId);
-                orderRepository.saveAndFlush(order);
-                log.info("Order {} marked as PAID", order.getId());
-            } else if ("PAYMENT_FAILED".equalsIgnoreCase(eventType)
-                    || "payment.failed".equalsIgnoreCase(eventType)) {
-                order.setStatus("FAILED");
-                order.setTransactionId(paymentId);
-                orderRepository.saveAndFlush(order);
-                log.info("Order {} marked as FAILED", order.getId());
-            } else {
-                log.info("Unhandled event type: {}", eventType);
-            }
-
-        } catch (Exception e) {
-            log.error("Webhook processing failed", e);
-        }
-
-        return ResponseEntity.ok("OK");
+    if (!cashfreeService.verifyWebhookSignature(body, signature, timestamp)) {
+        log.warn("Invalid webhook signature");
+        return ResponseEntity.ok("OK"); // Still 200 for retry stop
     }
+
+    log.info("WEBHOOK SIGNATURE VERIFIED!");
+
+    try {
+        JsonNode json = objectMapper.readTree(body);
+        String type = json.path("type").asText();
+        String cfOrderId = json.path("data").path("order").path("order_id").asText();
+
+        if ("PAYMENT_SUCCESS_WEBHOOK".equals(type)) {
+            Orders order = orderRepository.findByCashfreeOrderId(cfOrderId).orElse(null);
+            if (order != null && "PENDING".equals(order.getStatus())) {
+                String cfPaymentId = json.path("data").path("payment").path("cf_payment_id").asText();
+                order.setStatus("PAID");
+                order.setTransactionId(cfPaymentId);
+                orderRepository.save(order);
+                log.info("ORDER {} MARKED AS PAID!", order.getId());
+            }
+        }
+
+    } catch (Exception e) {
+        log.error("Webhook processing failed", e);
+    }
+
+    return ResponseEntity.ok("OK");
+}
 }

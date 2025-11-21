@@ -46,9 +46,8 @@ public class CashfreeService {
     public CreateOrderResult createOrder(Long dbOrderId, double amount, String email, String name, String phone) {
         String url = "https://api.cashfree.com/pg/orders";
 
-        // THIS IS THE ONLY LINE YOU NEED TO CHANGE – 100% FIX
+        // UNIQUE ORDER ID – NO 409 CONFLICT
         String orderId = "ORD_" + dbOrderId + "_" + System.currentTimeMillis();
-        // Example: ORD_89_1733712345678 → Always unique → No 409 EVER!
 
         Map<String, Object> body = new HashMap<>();
         body.put("order_id", orderId);
@@ -91,25 +90,31 @@ public class CashfreeService {
     private String generateUpiQr(String orderId, double amount, String vpa) {
         if (vpa == null) return null;
         String upi = String.format("upi://pay?pa=%s&pn=JayShoppy&am=%.2f&cu=INR&tr=%s", vpa, amount, orderId);
-        return "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + 
-               URLEncoder.encode(upi, StandardCharsets.UTF_8);
+        return "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + URLEncoder.encode(upi, StandardCharsets.UTF_8);
     }
 
-    // WEBHOOK VERIFICATION – ALREADY PERFECT (Secret Key use chestunnav)
-    public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
-        try {
-            String data = timestamp + "." + payload;
-            Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec key = new SecretKeySpec(cashfreeConfig.getSecretKey().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-            mac.init(key);
-            String computed = Base64.getEncoder().encodeToString(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
+    // FINAL WEBHOOK VERIFICATION WITH YOUR SECRET KEY
+      public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
+    try {
+        String data = timestamp + "." + payload;
 
-            boolean match = computed.equals(receivedSignature);
-            log.info("Webhook Signature Match: {}", match);
-            return match;
-        } catch (Exception e) {
-            log.error("Signature verification failed", e);
-            return false;
-        }
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec key = new SecretKeySpec(
+            cashfreeConfig.getWebhookSecret().getBytes(StandardCharsets.UTF_8),  // ← ENV VAR
+            "HmacSHA256"
+        );
+        mac.init(key);
+
+        byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+        String computed = Base64.getEncoder().encodeToString(hash);
+
+        log.info("Webhook Signature → Received: {} | Computed: {}", receivedSignature, computed);
+
+        return computed.equals(receivedSignature);
+
+    } catch (Exception e) {
+        log.error("Signature verification failed", e);
+        return false;
     }
+}
 }
