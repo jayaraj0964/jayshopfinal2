@@ -46,13 +46,10 @@ public class CashfreeService {
 
    // ONLY THIS BLOCK REPLACE CHEY – BAKI SAME
 public CreateOrderResult createOrder(Long dbOrderId, double amount, String email, String name, String phone) {
-    log.info("CASHFREE ORDER CREATION – PRODUCTION MODE");
-    log.info("DB ID: {} | Amount: ₹{} | User: {} ({}) | Phone: {}", dbOrderId, amount, name, email, phone);
-
     String url = "https://api.cashfree.com/pg/orders";
 
-    // ✅ Generate unique Cashfree order_id to avoid 409 Conflict
-    String orderId = "ORD_" + dbOrderId + "_" + System.currentTimeMillis();
+    // SIMPLE ORDER ID – NO TIMESTAMP (409 Conflict avoid + webhook works)
+    String orderId = "ORD_" + dbOrderId;
 
     Map<String, Object> body = new HashMap<>();
     body.put("order_id", orderId);
@@ -67,34 +64,31 @@ public CreateOrderResult createOrder(Long dbOrderId, double amount, String email
     body.put("customer_details", customer);
 
     Map<String, Object> meta = new HashMap<>();
-    meta.put("return_url", "https://jayshopy-ma48.vercel.app/order-success?order_id=" + orderId);
-    meta.put("notify_url", "https://jayshopfinal2.onrender.com/api/user/webhook/cashfree"); // ✅ corrected path
+    meta.put("return_url", "https://jayshopy-ma48.vercel.app/order-success");
+    meta.put("notify_url", "https://jayshopfinal2.onrender.com/api/user/webhook/cashfree");
     body.put("order_meta", meta);
 
     HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, getHeaders());
 
     try {
         ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-        log.info("CASHFREE RESPONSE: {}", response.getBody());
-
         JsonNode root = objectMapper.readTree(response.getBody());
 
         CreateOrderResult result = new CreateOrderResult();
         result.orderId = root.path("order_id").asText();
-        result.amount = amount;
         result.paymentSessionId = root.path("payment_session_id").asText();
+
+        // DIRECT WORKING LINK (NO 404)
+        result.paymentLink = "https://payments.cashfree.com/orders/pay_" + result.paymentSessionId;
+
         result.qrCodeUrl = generateUpiQr(orderId, amount, cashfreeConfig.getMerchantUpiId());
 
-        if (result.paymentSessionId == null || result.paymentSessionId.isEmpty()) {
-            throw new RuntimeException("No payment_session_id – check keys");
-        }
-
-        log.info("PRODUCTION SESSION ID READY: {}", result.paymentSessionId);
+        log.info("CASHFREE ORDER CREATED → DB: {} | CF: {} | Link: {}", dbOrderId, result.orderId, result.paymentLink);
         return result;
 
     } catch (Exception e) {
-        log.error("CASHFREE ERROR", e);
-        throw new RuntimeException("Payment setup failed: " + e.getMessage());
+        log.error("Cashfree order failed", e);
+        throw new RuntimeException("Payment gateway error");
     }
 }
 

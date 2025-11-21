@@ -34,6 +34,8 @@ public class Orders {  // ← Keep name as "Orders" to avoid conflict
 
     @Column(nullable = false, length = 500)
     private String shippingAddress;
+
+   @Column(name = "cashfree_order_id")
     private String cashfreeOrderId;
 
     @Column(name = "transaction_id")

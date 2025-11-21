@@ -31,14 +31,15 @@ public class PaymentController {
     private final ObjectMapper objectMapper;  // JSON convert kosam
 
     // CREATE CARD + UPI PAYMENT (BOTH WORK!)
- @PostMapping({"/create-card-payment", "/create-upi-payment"})
+@PostMapping({"/create-card-payment", "/create-upi-payment"})
     public ResponseEntity<?> createPayment(@RequestBody Map<String, Object> req, Authentication auth) {
         try {
             String email = auth.getName();
             User user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // Get shipping & total
+            // Extract shipping & total
+            @SuppressWarnings("unchecked")
             Map<String, Object> shipping = (Map<String, Object>) req.get("shippingAddress");
             double total = ((Number) req.get("total")).doubleValue();
 
@@ -46,15 +47,15 @@ public class PaymentController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid data"));
             }
 
-            // Create DB Order FIRST
+            // 1. CREATE DB ORDER FIRST
             Orders order = new Orders();
             order.setUser(user);
             order.setShippingAddress(objectMapper.writeValueAsString(shipping));
             order.setTotal(total);
             order.setStatus("PENDING");
-            order = orderRepository.save(order);
+            order = orderRepository.save(order);  // Save to get ID
 
-            // Create Cashfree Order
+            // 2. CREATE CASHFREE ORDER
             CashfreeService.CreateOrderResult result = cashfreeService.createOrder(
                 order.getId(),
                 total,
@@ -63,17 +64,23 @@ public class PaymentController {
                 user.getPhone()
             );
 
-            // FINAL RESPONSE – DB ORDER ID MANDATORY!
+            // 3. SAVE CASHFREE ORDER ID IN DB (MANDATORY FOR WEBHOOK!)
+            order.setCashfreeOrderId(result.orderId);
+            orderRepository.save(order);
+
+            // 4. BUILD RESPONSE
             Map<String, Object> res = new HashMap<>();
             res.put("success", true);
-            res.put("orderId", result.orderId);           // Cashfree ID: ORD_26
-            res.put("dbOrderId", order.getId());          // DB ID: 26  ← POLLING KI IDI KAVALI
+            res.put("orderId", result.orderId);           // Cashfree order_id (e.g. ORD_67)
+            res.put("dbOrderId", order.getId());          // Your DB ID (for polling)
             res.put("amount", total);
-            res.put("paymentSessionId", result.paymentSessionId); // For SDK
-            res.put("qrCodeUrl", result.qrCodeUrl);
-            // res.put("paymentLink", result.paymentLink);
+            res.put("paymentSessionId", result.paymentSessionId);
+            res.put("paymentLink", result.paymentLink);   // DIRECT WORKING LINK
+            res.put("qrCodeUrl", result.qrCodeUrl);       // For UPI QR
 
-            log.info("Payment created → DB ID: {} | Cashfree ID: {}", order.getId(), result.orderId);
+            log.info("Payment Created → DB ID: {} | Cashfree ID: {} | Link: {}", 
+                order.getId(), result.orderId, result.paymentLink);
+
             return ResponseEntity.ok(res);
 
         } catch (Exception e) {
@@ -83,30 +90,28 @@ public class PaymentController {
     }
 
 
+ @GetMapping("/order-status/{id}")
+    public ResponseEntity<Map<String, Object>> getOrderStatus(@PathVariable String id, Authentication auth) {
+        try {
+            Long orderId;
+            if (id.startsWith("ORD_")) {
+                orderId = Long.parseLong(id.replaceAll("\\D", ""));  // Extract number
+            } else {
+                orderId = Long.parseLong(id);
+            }
 
-  @GetMapping("/order-status/{id}")
-public ResponseEntity<Map<String, Object>> getOrderStatus(@PathVariable String id, Authentication auth) {
-    try {
-        Long orderId;
-        // Support both: 26 or ORD_26
-        if (id.startsWith("ORD_")) {
-            orderId = Long.parseLong(id.substring(4));
-        } else {
-            orderId = Long.parseLong(id);
+            Orders order = orderRepository.findById(orderId)
+                    .orElseThrow(() -> new RuntimeException("Order not found"));
+
+            Map<String, Object> res = new HashMap<>();
+            res.put("status", order.getStatus());
+            res.put("transactionId", order.getTransactionId() != null ? order.getTransactionId() : "");
+            return ResponseEntity.ok(res);
+
+        } catch (Exception e) {
+            Map<String, Object> res = new HashMap<>();
+            res.put("status", "PENDING");
+            return ResponseEntity.ok(res);
         }
-
-        Orders order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
-
-        Map<String, Object> res = new HashMap<>();
-        res.put("status", order.getStatus());
-        res.put("transactionId", order.getTransactionId() != null ? order.getTransactionId() : "");
-        return ResponseEntity.ok(res);
-
-    } catch (Exception e) {
-        Map<String, Object> res = new HashMap<>();
-        res.put("status", "PENDING");
-        return ResponseEntity.ok(res);
     }
-}
 }
