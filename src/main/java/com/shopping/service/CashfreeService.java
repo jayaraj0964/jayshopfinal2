@@ -94,10 +94,10 @@ public class CashfreeService {
     }
 
     // FINAL WEBHOOK VERIFICATION WITH YOUR SECRET KEY
-    public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
+   public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
     try {
-        // IMPORTANT: Cashfree uses direct concatenation → timestamp + payload (NO DOT)
-        String dataToSign = timestamp + payload;
+        // CORRECT 2025 FORMAT → timestamp + "." + payload
+        String dataToSign = timestamp + "." + payload;
 
         Mac mac = Mac.getInstance("HmacSHA256");
         SecretKeySpec secretKey = new SecretKeySpec(
@@ -112,13 +112,14 @@ public class CashfreeService {
         boolean isValid = computedSignature.equals(receivedSignature);
 
         log.info("Signature Verification → Match: {}", isValid);
+        log.info("Data used (first 100): {}", dataToSign.substring(0, Math.min(100, dataToSign.length())));
         log.info("Computed : {}", computedSignature);
         log.info("Received : {}", receivedSignature);
 
         return isValid;
 
     } catch (Exception e) {
-        log.error("Error verifying webhook signature", e);
+        log.error("Error verifying Cashfree webhook signature", e);
         return false;
     }
 }

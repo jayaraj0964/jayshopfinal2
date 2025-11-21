@@ -25,7 +25,7 @@ public class WebhookController {
     @Transactional
    @PostMapping("/webhook/cashfree")
 public ResponseEntity<String> handleCashfreeWebhook(
-        @RequestBody String rawBody,                          // ← MUST be String
+        @RequestBody String rawBody,
         @RequestHeader("x-webhook-timestamp") String timestamp,
         @RequestHeader("X-Webhook-Signature") String signature,
         HttpServletRequest request) {
@@ -35,17 +35,13 @@ public ResponseEntity<String> handleCashfreeWebhook(
     log.info("Received Signature: {}", signature);
     log.info("Raw Body ({} chars): {}", rawBody.length(), rawBody);
 
-    // DO NOT CLEAN / TRIM / REMOVE SPACES — Cashfree exact raw body expect chestundi
-    String payloadForSignature = rawBody;  // ← Use exactly as received
-
-    // Verify signature
-    if (!cashfreeService.verifyWebhookSignature(payloadForSignature, signature, timestamp)) {
-        log.warn("Invalid webhook signature – Possible replay attack or wrong secret");
-        return ResponseEntity.ok("OK"); // Still return 200 to stop retries
+    // Use raw body exactly as received → NO trim, NO replace
+    if (!cashfreeService.verifyWebhookSignature(rawBody, signature, timestamp)) {
+        log.warn("Invalid webhook signature");
+        return ResponseEntity.ok("OK");
     }
 
-    log.info("WEBHOOK SIGNATURE VERIFIED SUCCESSFULLY!");
-
+    log.info("WEBHOOK SIGNATURE VERIFIED – Processing payment...");
     // Now process the actual event
     try {
         JsonNode json = objectMapper.readTree(rawBody);
