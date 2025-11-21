@@ -94,28 +94,31 @@ public class CashfreeService {
     }
 
     // FINAL WEBHOOK VERIFICATION WITH YOUR SECRET KEY
-      public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
+    public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
     try {
-        String data = timestamp + "." + payload;
+        // IMPORTANT: Cashfree uses direct concatenation → timestamp + payload (NO DOT)
+        String dataToSign = timestamp + payload;
 
         Mac mac = Mac.getInstance("HmacSHA256");
-        SecretKeySpec key = new SecretKeySpec(
-            "332e9v764vgt0mnah1er".getBytes(StandardCharsets.UTF_8),  // ← YOUR SECRET
-            "HmacSHA256"
+        SecretKeySpec secretKey = new SecretKeySpec(
+                "332e9v764vgt0mnah1er".getBytes(StandardCharsets.UTF_8),
+                "HmacSHA256"
         );
-        mac.init(key);
+        mac.init(secretKey);
 
-        byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-        String computed = Base64.getEncoder().encodeToString(hash);
+        byte[] hashBytes = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
+        String computedSignature = Base64.getEncoder().encodeToString(hashBytes);
 
-        log.info("Data for signature: {}", data.substring(0, 100) + "...");
-        log.info("Computed Signature: {}", computed);
-        log.info("Received Signature: {}", receivedSignature);
-        log.info("Match: {}", computed.equals(receivedSignature));
+        boolean isValid = computedSignature.equals(receivedSignature);
 
-        return computed.equals(receivedSignature);
+        log.info("Signature Verification → Match: {}", isValid);
+        log.info("Computed : {}", computedSignature);
+        log.info("Received : {}", receivedSignature);
+
+        return isValid;
+
     } catch (Exception e) {
-        log.error("Signature verification failed", e);
+        log.error("Error verifying webhook signature", e);
         return false;
     }
 }
