@@ -30,44 +30,43 @@ public ResponseEntity<String> handleCashfreeWebhook(
         @RequestHeader("X-Webhook-Signature") String signature,
         HttpServletRequest request) {
 
-    log.info("=== CASHFREE WEBHOOK HIT FROM IP: {} ===", request.getRemoteAddr());
+    log.info("=== CASHFREE WEBHOOK HIT FROM {} ===", request.getRemoteAddr());
     log.info("Timestamp: {}", timestamp);
     log.info("Received Signature: {}", signature);
-    log.info("Raw Body Length: {}", rawBody.length());
-    log.info("Raw Body Preview: {}", rawBody.substring(0, 200));
+    log.info("Raw Body ({} chars): {}", rawBody.length(), rawBody);
 
-    // STEP 1: CLEAN PAYLOAD – REMOVE ALL WHITESPACE & NEWLINES (Cashfree exact JSON expect chestundi)
-    String cleanPayload = rawBody.trim().replaceAll("\\s+", "");
+    // SAFE PREVIEW – NO CRASH EVEN IF BODY IS SMALL
+    String preview = rawBody.length() > 200 ? rawBody.substring(0, 200) + "..." : rawBody;
+    log.info("Body Preview: {}", preview);
 
-    // STEP 2: VERIFY SIGNATURE WITH CLEAN PAYLOAD
-    if (!cashfreeService.verifyWebhookSignature(cleanPayload, signature, timestamp)) {
-        log.warn("SIGNATURE MISMATCH AFTER CLEANING – Returning 200 to stop retries");
+    // CLEAN PAYLOAD – Remove all whitespace/newlines
+    String payload = rawBody.trim().replaceAll("\\s+", "");
+
+    if (!cashfreeService.verifyWebhookSignature(payload, signature, timestamp)) {
+        log.warn("SIGNATURE MISMATCH – But returning 200 to stop retries");
         return ResponseEntity.ok("OK");
     }
 
-    log.info("WEBHOOK SIGNATURE VERIFIED SUCCESSFULLY!");
+    log.info("WEBHOOK SIGNATURE VERIFIED – PAYMENT CONFIRMED!");
 
-    // STEP 3: PROCESS PAYMENT
     try {
-        JsonNode json = objectMapper.readTree(cleanPayload);
+        JsonNode json = objectMapper.readTree(payload);
         String eventType = json.path("type").asText();
-        String cfOrderId = json.path("data").path("order").path("order_id").asText();
 
-        if ("PAYMENT_SUCCESS_WEBHOOK".equals(eventType)) {
+        if ("PAYMENT_SUCCESS_WEBHOOK".equals(eventType) || "payment.success".equals(eventType)) {
+            String cfOrderId = json.path("data").path("order").path("order_id").asText();
+            String cfPaymentId = json.path("data").path("payment").path("cf_payment_id").asText();
+
             Orders order = orderRepository.findByCashfreeOrderId(cfOrderId).orElse(null);
-            if (order != null && "PENDING".equals(order.getStatus())) {
-                String cfPaymentId = json.path("data").path("payment").path("cf_payment_id").asText();
+            if (order != null && !"PAID".equals(order.getStatus())) {
                 order.setStatus("PAID");
                 order.setTransactionId(cfPaymentId);
                 orderRepository.save(order);
                 log.info("ORDER {} MARKED AS PAID VIA WEBHOOK!", order.getId());
-            } else {
-                log.warn("Order {} not found or already PAID", cfOrderId);
             }
         }
-
     } catch (Exception e) {
-        log.error("Webhook processing failed", e);
+        log.error("Error processing webhook", e);
     }
 
     return ResponseEntity.ok("OK");
