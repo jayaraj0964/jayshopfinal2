@@ -7,15 +7,20 @@ import com.shopping.entity.User;
 import com.shopping.repository.OrderRepository;
 import com.shopping.repository.UserRepository;
 import com.shopping.service.CashfreeService;
-
+import org.springframework.http.HttpMethod;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.web.client.RestTemplate;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -114,4 +119,80 @@ public class PaymentController {
             return ResponseEntity.ok(res);
         }
     }
+
+  @PostMapping("/create-payment-session")
+public ResponseEntity<?> createPaymentSession(
+        @RequestBody Map<String, Object> request,
+        Authentication authentication) {
+
+    String email = authentication.getName();
+    User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+    // Generate unique order ID
+    String orderId = "ORD_" + System.currentTimeMillis();
+    Double amount = Double.valueOf(request.get("amount").toString());
+
+    // Cashfree payload
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("order_id", orderId);
+    payload.put("order_amount", amount);
+    payload.put("order_currency", "INR");
+    payload.put("customer_details", Map.of(
+            "customer_id", "user_" + user.getId(),
+            "customer_name", user.getName(),
+            "customer_email", user.getEmail(),
+            "customer_phone", user.getPhone()
+    ));
+    payload.put("order_meta", Map.of(
+            "return_url", "https://jayshopfinal2.onrender.com/payment-success?order_id=" + orderId
+    ));
+
+    // Headers
+    HttpHeaders headers = new HttpHeaders();
+    headers.set("x-client-id", "TEST1234567890");           // ← Ne App ID
+    headers.set("x-client-secret", "cfsk_test_abc123..."); // ← Ne Secret
+    headers.set("x-api-version", "2023-08-01");
+    headers.setContentType(MediaType.APPLICATION_JSON);
+
+    HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
+
+    RestTemplate restTemplate = new RestTemplate();
+
+    try {
+        // CORRECT WAY to call with ParameterizedTypeReference
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                "https://api.cashfree.com/pg/orders",
+                HttpMethod.POST,
+                entity,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+        );
+
+        Map<String, Object> responseBody = response.getBody();
+
+        // 2025 lo payment_session_id ila vasthundi → { "id": "session_xxx" }
+        Map<String, Object> sessionObj = (Map<String, Object>) responseBody.get("payment_session_id");
+        String paymentSessionId = (String) sessionObj.get("id");
+
+        // Save order in DB
+        Orders order = new Orders();
+        order.setCashfreeOrderId(orderId);
+        order.setTotal(amount);
+        order.setStatus("PENDING");
+        order.setUser(user);
+        orderRepository.save(order);
+
+        // Return to frontend
+        Map<String, String> result = new HashMap<>();
+        result.put("payment_session_id", paymentSessionId);
+        result.put("order_id", orderId);
+
+        return ResponseEntity.ok(result);
+
+    } catch (Exception e) {
+        log.error("Cashfree payment session failed", e);
+        return ResponseEntity.status(500)
+                .body(Map.of("error", "Payment initiation failed: " + e.getMessage()));
+    }
+}
 }
