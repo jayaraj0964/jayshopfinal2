@@ -100,7 +100,7 @@ public class CashfreeService {
 
         Mac mac = Mac.getInstance("HmacSHA256");
         SecretKeySpec key = new SecretKeySpec(
-            cashfreeConfig.getWebhookSecret().getBytes(StandardCharsets.UTF_8),  // ← ENV VAR
+            "332e9v764vgt0mnah1er".getBytes(StandardCharsets.UTF_8),  // ← YOUR SECRET
             "HmacSHA256"
         );
         mac.init(key);
@@ -108,10 +108,12 @@ public class CashfreeService {
         byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
         String computed = Base64.getEncoder().encodeToString(hash);
 
-        log.info("Webhook Signature → Received: {} | Computed: {}", receivedSignature, computed);
+        log.info("Data for signature: {}", data.substring(0, 100) + "...");
+        log.info("Computed Signature: {}", computed);
+        log.info("Received Signature: {}", receivedSignature);
+        log.info("Match: {}", computed.equals(receivedSignature));
 
         return computed.equals(receivedSignature);
-
     } catch (Exception e) {
         log.error("Signature verification failed", e);
         return false;
