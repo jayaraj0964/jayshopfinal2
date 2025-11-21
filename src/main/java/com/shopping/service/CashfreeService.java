@@ -94,32 +94,31 @@ public class CashfreeService {
     }
 
     // FINAL WEBHOOK VERIFICATION WITH YOUR SECRET KEY
-   public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
+  public boolean verifyWebhookSignature(String payload, String receivedSignature, String timestamp) {
     try {
         // CORRECT 2025 FORMAT → timestamp + "." + payload
         String dataToSign = timestamp + "." + payload;
 
         Mac mac = Mac.getInstance("HmacSHA256");
-        SecretKeySpec secretKey = new SecretKeySpec(
-                "332e9v764vgt0mnah1er".getBytes(StandardCharsets.UTF_8),
-                "HmacSHA256"
+        SecretKeySpec key = new SecretKeySpec(
+            "332e9v764vgt0mnah1er".getBytes(StandardCharsets.UTF_8),
+            "HmacSHA256"
         );
-        mac.init(secretKey);
+        mac.init(key);
 
-        byte[] hashBytes = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
-        String computedSignature = Base64.getEncoder().encodeToString(hashBytes);
+        byte[] hash = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
+        String computed = Base64.getEncoder().encodeToString(hash);
 
-        boolean isValid = computedSignature.equals(receivedSignature);
+        boolean match = computed.equals(receivedSignature);
 
-        log.info("Signature Verification → Match: {}", isValid);
         log.info("Data used (first 100): {}", dataToSign.substring(0, Math.min(100, dataToSign.length())));
-        log.info("Computed : {}", computedSignature);
-        log.info("Received : {}", receivedSignature);
+        log.info("Computed: {}", computed);
+        log.info("Received: {}", receivedSignature);
+        log.info("Match: {}", match);
 
-        return isValid;
-
+        return match;
     } catch (Exception e) {
-        log.error("Error verifying Cashfree webhook signature", e);
+        log.error("Signature verification failed", e);
         return false;
     }
 }

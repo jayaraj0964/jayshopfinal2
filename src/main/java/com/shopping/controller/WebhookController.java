@@ -24,48 +24,54 @@ public class WebhookController {
 
     @Transactional
    @PostMapping("/webhook/cashfree")
-public ResponseEntity<String> handleCashfreeWebhook(
-        @RequestBody String rawBody,
-        @RequestHeader("x-webhook-timestamp") String timestamp,
-        @RequestHeader("X-Webhook-Signature") String signature,
-        HttpServletRequest request) {
+    public ResponseEntity<String> handleCashfreeWebhook(
+            @RequestBody String rawBody,                          // Raw string – no cleaning
+            @RequestHeader("x-webhook-timestamp") String timestamp,
+            @RequestHeader("X-Webhook-Signature") String signature,
+            HttpServletRequest request) {
 
-    log.info("=== CASHFREE WEBHOOK HIT FROM {} ===", request.getRemoteAddr());
-    log.info("Timestamp: {}", timestamp);
-    log.info("Received Signature: {}", signature);
-    log.info("Raw Body ({} chars): {}", rawBody.length(), rawBody);
+        log.info("=== CASHFREE WEBHOOK HIT FROM {} ===", request.getRemoteAddr());
+        log.info("Timestamp: {}", timestamp);
+        log.info("Received Signature: {}", signature);
+        log.info("Raw Body Length: {}", rawBody.length());
 
-    // Use raw body exactly as received → NO trim, NO replace
-    if (!cashfreeService.verifyWebhookSignature(rawBody, signature, timestamp)) {
-        log.warn("Invalid webhook signature");
-        return ResponseEntity.ok("OK");
-    }
+        try {
+            JsonNode json = objectMapper.readTree(rawBody);
+            String eventType = json.path("type").asText();
 
-    log.info("WEBHOOK SIGNATURE VERIFIED – Processing payment...");
-    // Now process the actual event
-    try {
-        JsonNode json = objectMapper.readTree(rawBody);
-        String eventType = json.path("type").asText();
+            // TEST EVENT (Manual "Send Test Event" from dashboard) – Skip signature
+            if ("WEBHOOK".equals(eventType)) {
+                log.info("TEST WEBHOOK RECEIVED – Skipping signature verification");
+                log.info("Test Payload: {}", rawBody);
+                return ResponseEntity.ok("OK");
+            }
 
-        if ("payment.success".equals(eventType) || "PAYMENT_SUCCESS_WEBHOOK".equals(eventType)) {
+            // REAL PAYMENT EVENT – Verify signature
+            if (!cashfreeService.verifyWebhookSignature(rawBody, signature, timestamp)) {
+                log.warn("REAL WEBHOOK – Signature mismatch (possible replay attack)");
+                return ResponseEntity.ok("OK"); // Still acknowledge to stop retries
+            }
+
+            log.info("REAL WEBHOOK – SIGNATURE VERIFIED SUCCESSFULLY!");
+
+            // Process real payment success
             String cfOrderId = json.path("data").path("order").path("order_id").asText();
             String cfPaymentId = json.path("data").path("payment").path("cf_payment_id").asText();
 
             Orders order = orderRepository.findByCashfreeOrderId(cfOrderId).orElse(null);
-            if (order != null && !"PAID".equals(order.getStatus())) {
+            if (order != null && "PENDING".equals(order.getStatus())) {
                 order.setStatus("PAID");
                 order.setTransactionId(cfPaymentId);
                 orderRepository.save(order);
-                log.info("ORDER ID {} MARKED AS PAID | Payment ID: {}", order.getId(), cfPaymentId);
+                log.info("ORDER {} MARKED AS PAID | Payment ID: {}", order.getId(), cfPaymentId);
             } else {
                 log.info("Order {} already PAID or not found", cfOrderId);
             }
+
+        } catch (Exception e) {
+            log.error("Webhook processing error", e);
         }
 
-    } catch (Exception e) {
-        log.error("Error processing Cashfree webhook", e);
+        return ResponseEntity.ok("OK");
     }
-
-    return ResponseEntity.ok("OK");
-}
 }
