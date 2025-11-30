@@ -41,11 +41,14 @@ public class SecurityConfig {
             "http://localhost:3000",
             "http://localhost:8080",
             "https://jayshopy.vercel.app",
-            "https://jayshopy-ma48.vercel.app"
+            "http://127.0.0.1:3000",
+            "https://jayshopy-ma48.vercel.app",
+            "https://jayshopy008.vercel.app"  //this is new instance
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
+        
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

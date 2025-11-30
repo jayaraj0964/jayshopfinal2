@@ -32,11 +32,11 @@ protected void doFilterInternal(HttpServletRequest request,
 
     String path = request.getRequestURI();
     // ✅ Skip JWT for webhook
-    if (path.startsWith("/jay/webhook/cashfree")) {
-        log.info("Skipping JWT filter for webhook path: {}", path);
-        filterChain.doFilter(request, response);
-        return;
-    }
+ if (path.startsWith("/api/user/webhook/cashfree")) {
+    log.info("Skipping JWT for Cashfree webhook: {}", path);
+    filterChain.doFilter(request, response);
+    return;
+}
 
     String header = request.getHeader("Authorization");
     log.info("=== JWT FILTER START ===");

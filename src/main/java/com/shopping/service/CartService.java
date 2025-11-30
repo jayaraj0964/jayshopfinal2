@@ -211,14 +211,19 @@ public class CartService {
     }
 
     // ========================= CLEAR CART =========================
-   @Transactional
+@Transactional
 public void clearCart(Long userId) {
     Cart cart = cartRepository.findByUserId(userId).orElse(null);
     if (cart != null) {
-        // DELETE ALL CART ITEMS FROM DB
+        // Stock restore chey
+        for (CartItem item : cart.getItems()) {
+            Product p = item.getProduct();
+            p.setStock(p.getStock() + item.getQuantity());
+            productRepository.save(p);
+        }
         cartItemRepository.deleteAll(cart.getItems());
         cart.getItems().clear();
-        cartRepository.saveAndFlush(cart);
+        cartRepository.save(cart);
     }
     notificationService.sendCartUpdate(userId);
 }
